@@ -25,6 +25,20 @@ fi
 mkdir -p /home/frappe/frappe-bench/sites
 chown -R frappe:frappe /home/frappe/frappe-bench/sites
 
+# --- expose node on the global PATH ----------------------------------------
+# The official image installs node via nvm under the frappe user's HOME, so it
+# is not on the default PATH used by supervisord's children (breaks socketio).
+# Symlink it into /usr/local/bin so every process can find it.
+if ! command -v node >/dev/null 2>&1; then
+    NODE_BIN="$(su - frappe -c 'command -v node' 2>/dev/null || true)"
+    if [ -n "${NODE_BIN}" ] && [ -x "${NODE_BIN}" ]; then
+        ln -sf "${NODE_BIN}" /usr/local/bin/node
+        echo "[entrypoint] Linked node: ${NODE_BIN} -> /usr/local/bin/node"
+    else
+        echo "[entrypoint] WARNING: node binary not found; realtime (socketio) may fail."
+    fi
+fi
+
 # --- render the Nginx config for this site ---------------------------------
 export SITE_NAME
 envsubst '${SITE_NAME}' \
