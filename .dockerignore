@@ -1,0 +1,7 @@
+# The all-in-one Dockerfile builds FROM the official frappe/erpnext image and
+# only needs the docker/ helpers, so keep the build context tiny (the ERPNext
+# source in this repo is not required to build the image).
+*
+!Dockerfile
+!docker
+!docker/**

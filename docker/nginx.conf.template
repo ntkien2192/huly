@@ -1,0 +1,47 @@
+# Rendered at container start by envsubst (only ${SITE_NAME} is expanded).
+upstream backend-server  { server 127.0.0.1:8000 fail_timeout=0; }
+upstream socketio-server { server 127.0.0.1:9000 fail_timeout=0; }
+
+server {
+    listen 8080;
+    server_name _;
+
+    root /home/frappe/frappe-bench/sites;
+
+    client_max_body_size 50m;
+    proxy_buffering off;
+    proxy_read_timeout 120;
+    proxy_redirect off;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Force single-site resolution regardless of the external domain/Host.
+    proxy_set_header X-Frappe-Site-Name ${SITE_NAME};
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location /assets {
+        try_files $uri =404;
+        add_header Cache-Control "max-age=31536000";
+    }
+
+    location ~ ^/protected/(.*) {
+        internal;
+        try_files /${SITE_NAME}/$1 =404;
+    }
+
+    location /socket.io {
+        proxy_http_version 1.1;
+        proxy_pass http://socketio-server;
+    }
+
+    location / {
+        try_files /${SITE_NAME}/public/$uri @webserver;
+    }
+
+    location @webserver {
+        proxy_http_version 1.1;
+        proxy_pass http://backend-server;
+    }
+}
