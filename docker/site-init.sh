@@ -27,18 +27,8 @@ SQL
 echo "[site-init] Waiting for Redis..."
 until [ "$(redis-cli -h 127.0.0.1 ping 2>/dev/null)" = "PONG" ]; do sleep 2; done
 
-echo "[site-init] Writing common_site_config.json..."
-cat > "$BENCH/sites/common_site_config.json" <<CFG
-{
- "db_host": "127.0.0.1",
- "db_port": 3306,
- "redis_cache": "redis://127.0.0.1:6379",
- "redis_queue": "redis://127.0.0.1:6379",
- "redis_socketio": "redis://127.0.0.1:6379",
- "socketio_port": 9000
-}
-CFG
-chown frappe:frappe "$BENCH/sites/common_site_config.json"
+# common_site_config.json is written by the entrypoint before supervisord starts,
+# so bench already has the correct db/redis endpoints here.
 
 if [ ! -f "$BENCH/sites/${SITE_NAME}/site_config.json" ]; then
     echo "[site-init] Creating site ${SITE_NAME} and installing ERPNext (first boot)..."

@@ -22,8 +22,38 @@ if [ ! -d /var/lib/mysql/mysql ]; then
 fi
 
 # --- sites directory (lives on a volume) -----------------------------------
-mkdir -p /home/frappe/frappe-bench/sites
-chown -R frappe:frappe /home/frappe/frappe-bench/sites
+BENCH=/home/frappe/frappe-bench
+mkdir -p "$BENCH/sites"
+
+# A volume mounted at sites/ hides the built assets that ship in the image
+# (sites/assets/assets.json etc.), which breaks every rendered page with
+# "'NoneType' object has no attribute 'get'". Restore them from the skeleton
+# snapshot taken at build time whenever they are missing.
+if [ ! -f "$BENCH/sites/assets/assets.json" ]; then
+    echo "[entrypoint] Restoring built assets into sites volume..."
+    mkdir -p "$BENCH/sites/assets"
+    cp -a /opt/frappe-sites-skel/assets/. "$BENCH/sites/assets/"
+fi
+for f in apps.txt apps.json; do
+    if [ ! -e "$BENCH/sites/$f" ] && [ -e "/opt/frappe-sites-skel/$f" ]; then
+        cp -a "/opt/frappe-sites-skel/$f" "$BENCH/sites/$f"
+    fi
+done
+
+# Write the bench config BEFORE supervisord starts so workers never fall back
+# to Frappe's default redis ports (11311/13311) and crash-loop on boot.
+cat > "$BENCH/sites/common_site_config.json" <<CFG
+{
+ "db_host": "127.0.0.1",
+ "db_port": 3306,
+ "redis_cache": "redis://127.0.0.1:6379",
+ "redis_queue": "redis://127.0.0.1:6379",
+ "redis_socketio": "redis://127.0.0.1:6379",
+ "socketio_port": 9000
+}
+CFG
+
+chown -R frappe:frappe "$BENCH/sites"
 
 # --- expose node on the global PATH ----------------------------------------
 # The official image installs node via nvm under the frappe user's HOME, so it
