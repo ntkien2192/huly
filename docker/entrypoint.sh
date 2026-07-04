@@ -54,9 +54,9 @@ mkdir -p "$BENCH/sites"
 # Make sure the bench knows its apps, then (re)build assets into the volume
 # when the manifest is missing. Kept non-fatal so a build hiccup never turns
 # into a container crash-loop.
-if [ ! -f "$BENCH/sites/apps.txt" ]; then
-    printf 'frappe\nerpnext\nhrms\n' > "$BENCH/sites/apps.txt"
-fi
+# Regenerate apps.txt from the apps actually present in the image (frappe first),
+# so it always matches the bundled app set even after the volume masks sites/.
+{ echo frappe; ls -1 "$BENCH/apps" 2>/dev/null | grep -vx frappe; } > "$BENCH/sites/apps.txt"
 chown -R frappe:frappe "$BENCH/sites"
 if [ ! -f "$BENCH/sites/assets/assets.json" ]; then
     echo "[entrypoint] Building web assets (first boot, this takes 1-2 min)..."

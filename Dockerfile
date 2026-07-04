@@ -11,11 +11,20 @@
 FROM frappe/erpnext:v15
 
 # --- extra Frappe apps -----------------------------------------------------
-# HR & Payroll ("hrms") was split out of erpnext core in v14, so pull it in as
-# a separate app. --skip-assets: assets are (re)built at container start.
+# Apps split out of erpnext core (all on the stable version-15 branch):
+#   hrms     -> HR & Payroll
+#   payments -> payment gateway integrations
+#   webshop  -> e-commerce storefront / shopping cart
+# --skip-assets: assets are (re)built at container start. A failed fetch is
+# tolerated (partial clone removed) so one bad app never breaks the build.
 USER frappe
 RUN cd /home/frappe/frappe-bench \
-    && bench get-app --branch version-15 --skip-assets hrms
+    && for spec in "hrms:version-15" "payments:version-15" "webshop:version-15"; do \
+         app="${spec%%:*}"; br="${spec##*:}"; \
+         echo "=== get-app ${app} (${br}) ==="; \
+         bench get-app --branch "${br}" --skip-assets "${app}" \
+           || { echo "WARN: get-app ${app} failed"; rm -rf "apps/${app}"; }; \
+       done
 
 # --- system services on top of the official image -------------------------
 USER root

@@ -43,16 +43,19 @@ else
     echo "[site-init] Site ${SITE_NAME} already exists; skipping creation."
 fi
 
-# Ensure the apps are actually installed on the site. A container restart during
-# the first install can leave the site half-installed -> every request 500s with
-# "App <x> is not installed". Installing again completes it; if an app is already
-# fully installed this is a no-op. hrms provides the HR & Payroll module.
+# Ensure every bundled app is installed on the site. A container restart during
+# the first install can leave the site half-installed -> requests 500 with
+# "App <x> is not installed". Installing again completes it; an already-installed
+# app is a no-op. erpnext goes first (others depend on it); the rest are picked
+# up automatically from the apps present in the image.
 INSTALLED="$(su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' list-apps" 2>/dev/null || true)"
-for app in erpnext hrms; do
+APPS="erpnext $(ls -1 "$BENCH/apps" 2>/dev/null | grep -vxE 'frappe|erpnext' | tr '\n' ' ')"
+for app in ${APPS}; do
+    [ -d "$BENCH/apps/${app}" ] || continue
     if echo "${INSTALLED}" | grep -qw "${app}"; then
         echo "[site-init] ${app} already installed."
     else
-        echo "[site-init] Installing ${app} (this takes a few minutes; do NOT redeploy until it finishes)..."
+        echo "[site-init] Installing ${app} (this can take a few minutes; do NOT redeploy until it finishes)..."
         su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' install-app ${app}" \
             && echo "[site-init] ${app} installed." \
             || echo "[site-init] WARN: ${app} install did not complete cleanly."
