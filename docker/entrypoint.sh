@@ -22,17 +22,18 @@ if [ ! -d /var/lib/mysql/mysql ]; then
 fi
 
 # --- expose node on the global PATH ----------------------------------------
-# The official image installs node via nvm under the frappe user's HOME, so it
-# is not on the default PATH used by supervisord's children (breaks socketio).
-# Symlink it into /usr/local/bin so every process can find it.
-if ! command -v node >/dev/null 2>&1; then
-    NODE_BIN="$(su - frappe -c 'command -v node' 2>/dev/null || true)"
-    if [ -n "${NODE_BIN}" ] && [ -x "${NODE_BIN}" ]; then
-        ln -sf "${NODE_BIN}" /usr/local/bin/node
-        echo "[entrypoint] Linked node: ${NODE_BIN} -> /usr/local/bin/node"
-    else
-        echo "[entrypoint] WARNING: node binary not found; realtime (socketio) may fail."
-    fi
+# node ships in the image but is NOT on the PATH used by supervisord's children
+# (breaks socketio) nor on a frappe login shell's PATH (breaks bench build).
+# Locate it and ALWAYS symlink it into /usr/local/bin so every process finds it.
+NODE_BIN="$(command -v node 2>/dev/null || true)"
+if [ -z "${NODE_BIN}" ]; then
+    NODE_BIN="$(find /home/frappe /usr/local /usr/lib /opt -maxdepth 7 -type f -name node 2>/dev/null | head -n1)"
+fi
+if [ -n "${NODE_BIN}" ] && [ -x "${NODE_BIN}" ]; then
+    ln -sf "${NODE_BIN}" /usr/local/bin/node
+    echo "[entrypoint] Linked node: ${NODE_BIN} -> /usr/local/bin/node"
+else
+    echo "[entrypoint] WARNING: node binary not found; realtime + asset build may fail."
 fi
 
 # --- sites directory (lives on a volume) -----------------------------------
@@ -50,7 +51,10 @@ fi
 chown -R frappe:frappe "$BENCH/sites"
 if [ ! -f "$BENCH/sites/assets/assets.json" ]; then
     echo "[entrypoint] Building web assets (first boot, this takes 1-2 min)..."
-    su - frappe -c "cd $BENCH && bench build" \
+    # Force node (via the symlink above) and bench onto PATH; a plain login
+    # shell loses the nvm node path and the build silently fails.
+    su - frappe -c "cd $BENCH && PATH=/usr/local/bin:/home/frappe/.local/bin:$BENCH/env/bin:\$PATH bench build" \
+        && echo "[entrypoint] Asset build finished." \
         || echo "[entrypoint] WARNING: bench build failed; UI assets may be missing."
 fi
 
