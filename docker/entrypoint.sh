@@ -21,19 +21,28 @@ if [ ! -d /var/lib/mysql/mysql ]; then
         --auth-root-authentication-method=normal >/dev/null
 fi
 
-# --- expose node on the global PATH ----------------------------------------
-# node ships in the image but is NOT on the PATH used by supervisord's children
-# (breaks socketio) nor on a frappe login shell's PATH (breaks bench build).
-# Locate it and ALWAYS symlink it into /usr/local/bin so every process finds it.
+# --- expose the node toolchain on the global PATH --------------------------
+# node/yarn ship in the image (under nvm) but are NOT on the PATH used by
+# supervisord's children (breaks socketio) nor on a frappe login shell's PATH
+# (breaks `bench build`, which shells out to `yarn`). Locate the node bin dir
+# and symlink node + yarn + npm + npx into /usr/local/bin so every process
+# finds them.
 NODE_BIN="$(command -v node 2>/dev/null || true)"
+if [ -z "${NODE_BIN}" ]; then
+    NODE_BIN="$(su - frappe -c 'command -v node' 2>/dev/null || true)"
+fi
 if [ -z "${NODE_BIN}" ]; then
     NODE_BIN="$(find /home/frappe /usr/local /usr/lib /opt -maxdepth 7 -type f -name node 2>/dev/null | head -n1)"
 fi
+NODE_DIR=""
 if [ -n "${NODE_BIN}" ] && [ -x "${NODE_BIN}" ]; then
-    ln -sf "${NODE_BIN}" /usr/local/bin/node
-    echo "[entrypoint] Linked node: ${NODE_BIN} -> /usr/local/bin/node"
+    NODE_DIR="$(dirname "${NODE_BIN}")"
+    for b in node yarn npm npx; do
+        [ -x "${NODE_DIR}/$b" ] && ln -sf "${NODE_DIR}/$b" "/usr/local/bin/$b"
+    done
+    echo "[entrypoint] Linked node toolchain from ${NODE_DIR} into /usr/local/bin"
 else
-    echo "[entrypoint] WARNING: node binary not found; realtime + asset build may fail."
+    echo "[entrypoint] WARNING: node not found; realtime + asset build may fail."
 fi
 
 # --- sites directory (lives on a volume) -----------------------------------
@@ -51,9 +60,10 @@ fi
 chown -R frappe:frappe "$BENCH/sites"
 if [ ! -f "$BENCH/sites/assets/assets.json" ]; then
     echo "[entrypoint] Building web assets (first boot, this takes 1-2 min)..."
-    # Force node (via the symlink above) and bench onto PATH; a plain login
-    # shell loses the nvm node path and the build silently fails.
-    su - frappe -c "cd $BENCH && PATH=/usr/local/bin:/home/frappe/.local/bin:$BENCH/env/bin:\$PATH bench build" \
+    # Force the node toolchain (node + yarn, via /usr/local/bin and the nvm bin
+    # dir) plus bench onto PATH; a plain login shell loses these and the build
+    # fails with "node: not found" / "yarn: not found".
+    su - frappe -c "cd $BENCH && PATH=/usr/local/bin:${NODE_DIR}:/home/frappe/.local/bin:$BENCH/env/bin:\$PATH bench build" \
         && echo "[entrypoint] Asset build finished." \
         || echo "[entrypoint] WARNING: bench build failed; UI assets may be missing."
 fi

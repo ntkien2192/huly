@@ -31,18 +31,33 @@ until [ "$(redis-cli -h 127.0.0.1 ping 2>/dev/null)" = "PONG" ]; do sleep 2; don
 # so bench already has the correct db/redis endpoints here.
 
 if [ ! -f "$BENCH/sites/${SITE_NAME}/site_config.json" ]; then
-    echo "[site-init] Creating site ${SITE_NAME} and installing ERPNext (first boot)..."
+    echo "[site-init] Creating site ${SITE_NAME} (first boot)..."
     su - frappe -c "cd $BENCH && bench new-site '${SITE_NAME}' \
         --db-root-username root \
         --mariadb-root-password '${DB_ROOT_PASSWORD}' \
         --admin-password '${ADMIN_PASSWORD}' \
         --mariadb-user-host-login-scope='%' \
-        --install-app erpnext \
         --set-default"
     echo "[site-init] Site created."
 else
     echo "[site-init] Site ${SITE_NAME} already exists; skipping creation."
 fi
+
+# Ensure ERPNext is actually installed. A container restart during the first
+# install can leave the site half-installed -> every request 500s with
+# "App erpnext is not installed". Installing again completes it; if it is
+# already fully installed this is a no-op.
+if su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' list-apps" 2>/dev/null | grep -qw erpnext; then
+    echo "[site-init] ERPNext already installed."
+else
+    echo "[site-init] Installing ERPNext (this takes a few minutes; do NOT redeploy until it finishes)..."
+    su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' install-app erpnext" \
+        && echo "[site-init] ERPNext installed." \
+        || echo "[site-init] WARN: ERPNext install did not complete cleanly."
+fi
+# Make sure the schema is fully migrated (completes any interrupted install).
+su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' migrate" \
+    || echo "[site-init] WARN: migrate did not complete cleanly."
 
 # The public website (and even the login page) initialises a "Guest" session on
 # every request; if the Guest user is disabled — which a half-finished earlier
