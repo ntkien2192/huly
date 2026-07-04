@@ -44,4 +44,12 @@ else
     echo "[site-init] Site ${SITE_NAME} already exists; skipping creation."
 fi
 
+# The public website (and even the login page) initialises a "Guest" session on
+# every request; if the Guest user is disabled — which a half-finished earlier
+# install can leave behind — the whole site 500s with "User Guest is disabled".
+# Ensure it is enabled on every boot (idempotent, cheap).
+echo "[site-init] Ensuring Guest user is enabled..."
+su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' execute frappe.db.set_value --args \"['User', 'Guest', 'enabled', 1]\"" \
+    || echo "[site-init] WARN: could not enable Guest user"
+
 echo "[site-init] Done."
