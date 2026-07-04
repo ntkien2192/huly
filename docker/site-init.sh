@@ -15,11 +15,25 @@ echo "[site-init] Waiting for MariaDB..."
 until mysqladmin ping -h 127.0.0.1 --silent 2>/dev/null; do sleep 2; done
 
 echo "[site-init] Ensuring database root credentials..."
-# Fresh datadir: root@localhost has no password and connects via socket only.
-# Set the password and add a TCP-capable root@'%' for bench (db_host=127.0.0.1).
-mysql -u root <<SQL
-ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
+# Two cases:
+#  - fresh datadir  -> root@localhost has no password (connect with no -p)
+#  - persisted vol  -> root already has the password set on a previous boot
+# Detect which, then ensure a TCP-capable root@'%' exists for bench
+# (db_host=127.0.0.1). Never let this step abort site-init.
+if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
+    echo "[site-init]  fresh datadir: setting root password"
+    mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASSWORD}';" || true
+    ROOT_AUTH="-p${DB_ROOT_PASSWORD}"
+elif mysql -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" >/dev/null 2>&1; then
+    echo "[site-init]  existing datadir: root password already set"
+    ROOT_AUTH="-p${DB_ROOT_PASSWORD}"
+else
+    echo "[site-init]  WARN: could not authenticate as MariaDB root (password mismatch with the persisted volume?)"
+    ROOT_AUTH="-p${DB_ROOT_PASSWORD}"
+fi
+mysql -u root ${ROOT_AUTH} <<SQL || echo "[site-init] WARN: could not ensure root@'%'"
 CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
+ALTER USER 'root'@'%' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 SQL
