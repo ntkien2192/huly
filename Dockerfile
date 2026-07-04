@@ -38,11 +38,6 @@ RUN chmod +x /usr/local/bin/erpnext-entrypoint.sh /usr/local/bin/site-init.sh \
     && mkdir -p /var/lib/mysql /run/mysqld /var/log/supervisor \
     && chown -R mysql:mysql /var/lib/mysql /run/mysqld
 
-# Snapshot the pristine sites skeleton (built assets, apps.txt/apps.json) OUTSIDE
-# the volume path. A volume mounted at sites/ would otherwise hide the assets the
-# image built, breaking every rendered page. The entrypoint restores from here.
-RUN cp -a /home/frappe/frappe-bench/sites /opt/frappe-sites-skel
-
 # Runtime configuration (override these in EasyPanel > Environment)
 ENV SITE_NAME=erp.localhost \
     ADMIN_PASSWORD=admin \
