@@ -103,6 +103,57 @@ def simplify_field(f):
     return out
 
 
+def build_layout(raw_fields):
+    """Build the nested form layout: Tab -> Section -> Column -> [fieldnames].
+
+    Frappe fields are an ordered list where "Tab Break", "Section Break" and
+    "Column Break" mark the visual grouping. This reconstructs that tree so you
+    can see how ERPNext arranges data on each form. Only fieldname references
+    are stored here; full field details live in the flat "fields" list.
+    """
+    def new_tab(f=None):
+        return {"tab": (f or {}).get("label"), "fieldname": (f or {}).get("fieldname"), "sections": []}
+
+    def new_section(f=None):
+        return {"section": (f or {}).get("label"), "fieldname": (f or {}).get("fieldname"), "columns": []}
+
+    def new_column(f=None):
+        return {"column": (f or {}).get("label"), "fieldname": (f or {}).get("fieldname"), "fields": []}
+
+    tabs, tab, section, column = [], new_tab(), new_section(), new_column()
+
+    def close_column():
+        if column["fields"] or column["column"]:
+            section["columns"].append(column)
+
+    def close_section():
+        close_column()
+        if section["columns"] or section["section"]:
+            tab["sections"].append(section)
+
+    def close_tab():
+        close_section()
+        if tab["sections"] or tab["tab"]:
+            tabs.append(tab)
+
+    for f in raw_fields:
+        ft = f.get("fieldtype")
+        if ft == "Tab Break":
+            close_tab()
+            tab, section, column = new_tab(f), new_section(), new_column()
+        elif ft == "Section Break":
+            close_section()
+            section, column = new_section(f), new_column()
+        elif ft == "Column Break":
+            close_column()
+            column = new_column(f)
+        elif ft not in LAYOUT_FIELDTYPES:
+            column["fields"].append(f.get("fieldname"))
+        # other layout-only types (HTML, Heading, Button...) are ignored here
+    close_tab()
+    return tabs
+
+
 def export(url, key, secret, modules=None, include_layout=False):
     names = list_doctypes(url, key, secret)
     total = len(names)
@@ -147,6 +198,8 @@ def export(url, key, secret, modules=None, include_layout=False):
             "autoname": doc.get("autoname"),
             "field_count": len(fields),
             "fields": fields,
+            # nested Tab -> Section -> Column -> [fieldnames] arrangement
+            "layout": build_layout(doc.get("fields", [])),
         }
 
     return {
