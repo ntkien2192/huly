@@ -10,6 +10,13 @@
 
 FROM frappe/erpnext:v15
 
+# --- extra Frappe apps -----------------------------------------------------
+# HR & Payroll ("hrms") was split out of erpnext core in v14, so pull it in as
+# a separate app. --skip-assets: assets are (re)built at container start.
+USER frappe
+RUN cd /home/frappe/frappe-bench \
+    && bench get-app --branch version-15 --skip-assets hrms
+
 # --- system services on top of the official image -------------------------
 USER root
 

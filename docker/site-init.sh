@@ -43,18 +43,21 @@ else
     echo "[site-init] Site ${SITE_NAME} already exists; skipping creation."
 fi
 
-# Ensure ERPNext is actually installed. A container restart during the first
-# install can leave the site half-installed -> every request 500s with
-# "App erpnext is not installed". Installing again completes it; if it is
-# already fully installed this is a no-op.
-if su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' list-apps" 2>/dev/null | grep -qw erpnext; then
-    echo "[site-init] ERPNext already installed."
-else
-    echo "[site-init] Installing ERPNext (this takes a few minutes; do NOT redeploy until it finishes)..."
-    su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' install-app erpnext" \
-        && echo "[site-init] ERPNext installed." \
-        || echo "[site-init] WARN: ERPNext install did not complete cleanly."
-fi
+# Ensure the apps are actually installed on the site. A container restart during
+# the first install can leave the site half-installed -> every request 500s with
+# "App <x> is not installed". Installing again completes it; if an app is already
+# fully installed this is a no-op. hrms provides the HR & Payroll module.
+INSTALLED="$(su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' list-apps" 2>/dev/null || true)"
+for app in erpnext hrms; do
+    if echo "${INSTALLED}" | grep -qw "${app}"; then
+        echo "[site-init] ${app} already installed."
+    else
+        echo "[site-init] Installing ${app} (this takes a few minutes; do NOT redeploy until it finishes)..."
+        su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' install-app ${app}" \
+            && echo "[site-init] ${app} installed." \
+            || echo "[site-init] WARN: ${app} install did not complete cleanly."
+    fi
+done
 # Make sure the schema is fully migrated (completes any interrupted install).
 su - frappe -c "cd $BENCH && bench --site '${SITE_NAME}' migrate" \
     || echo "[site-init] WARN: migrate did not complete cleanly."

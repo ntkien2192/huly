@@ -55,7 +55,7 @@ mkdir -p "$BENCH/sites"
 # when the manifest is missing. Kept non-fatal so a build hiccup never turns
 # into a container crash-loop.
 if [ ! -f "$BENCH/sites/apps.txt" ]; then
-    printf 'frappe\nerpnext\n' > "$BENCH/sites/apps.txt"
+    printf 'frappe\nerpnext\nhrms\n' > "$BENCH/sites/apps.txt"
 fi
 chown -R frappe:frappe "$BENCH/sites"
 if [ ! -f "$BENCH/sites/assets/assets.json" ]; then
